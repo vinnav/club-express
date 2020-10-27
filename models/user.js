@@ -1,43 +1,23 @@
-var mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
-var Schema = mongoose.Schema;
+const Schema = mongoose.Schema;
 
-var UserSchema = new Schema(
-    {
-        username: {type: String, required: true},
-        password: {type: String, required: true},
-        first_name: {type: String, maxlength: 20},
-        last_name: {type: String, maxlength: 30},
-        permission: {
-            type: String, 
-            enum: ['basic', 'premium', 'admin'], 
-            default: 'basic'
+const UserSchema = new Schema({
+    first_name: { type: String, required: true, minlength: 1 },
+    last_name: { type: String, required: true, minlength: 1 },
+    username: { type: String, required: true, minlength: 1 },
+    password: { type: String, required: true, minlength: 1, trim: true },
+    permission: {
+      type: String,
+      enum: ['basic', 'member', 'admin'],
+      default: 'basic',
         },
-    }
-);
+});
 
 // Virtual for author's full name
-UserSchema
-.virtual('name')
-.get(function (){
-
-    var fullname = '';
-    if (this.first_name && this.last_name){
-        fullname = this.last_name + ', ' + this.first_name;
-    }
-    if (!this.first_name || !this.last_name){
-        fullname = '';
-    }
-
-    return fullname;
-});
-
-// Virtual for author's URL
-UserSchema
-.virtual('url')
-.get(function () {
-    return '/index/user/' + this.id;
-});
+UserSchema.virtual('fullname').get(function() {
+    return this.first_name + ' ' + this.last_name;
+  });
 
 // Export model
 module.exports = mongoose.model('User', UserSchema);

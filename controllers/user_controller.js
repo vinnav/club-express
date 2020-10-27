@@ -1,75 +1,169 @@
-var User = require('../models/user');
-var async = require('async');
-var passport = require('passport')
 const { body,validationResult } = require("express-validator");
+var User = require('../models/user');
+var bcrypt = require('bcryptjs');
+var passport = require('passport');
 
-
-// GET request for signup. 
-exports.user_signup_get = function(req, res, next) {
-    res.render("signup");
-};
+// GET User Sign-Up Form
+exports.userSignUpGet = (req, res) =>
+  res.render('sign-up', { title: 'Sign-Up' });
 
 // POST request for signup. 
-exports.user_signup_post = [
-    body('username').trim().isLength({min:1}).escape().withMessage('Username must be specified'),
-    body('password').isLength({min:1}).escape().withMessage('Password must be specified'),
-    body('first_name').isLength({min:1}).escape().withMessage('First name must be specified'),
-    body('last_name').isLength({min:1}).escape().withMessage('Last name must be specified'),
-    body('secretcode').escape(),
-    // Process request after validation and sanitization.
-    (req, res, next) => {
-        
-        //Extract the validation errors from a request.
-        const errors = validationResult(req);
+exports.userSignUpPost = [
+  // Validate and sanitize data
+  body('username')
+    .isAlphanumeric()
+    .withMessage('Username must be alphanumeric')
+    .isLength({ min: 2, max: 20 })
+    .withMessage('Username must be between 2 and 20 characters long')
+    .custom(async (value) => {
+      const user = await User.findOne({ username: value });
+      if (user) {
+        return Promise.reject('Username already in use');
+      }
+    })
+    .trim()
+    .escape(),
+  body('first_name')
+    .isAlphanumeric()
+    .withMessage('First name must be alphanumeric')
+    .isLength({ min: 2, max: 20 })
+    .withMessage('First name must be between 2 and 20 characters long')
+    .trim()
+    .escape(),
+  body('last_name')
+    .isAlphanumeric()
+    .withMessage('Last name must be alphanumeric')
+    .isLength({ min: 2, max: 20 })
+    .withMessage('Last name must be between 2 and 20 characters long')
+    .trim()
+    .escape(),
+  body('password')
+    .exists()
+    .withMessage('Password must be entered')
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Password must be between 2 and 50 characters long')
+    .trim()
+    .escape(),
+  body('passwordConfirmation')
+    .custom(
+      (passwordConfirmation, { req }) =>
+        passwordConfirmation === req.body.password
+    )
+    .withMessage("Passwords don't match")
+    .trim()
+    .escape(),
 
-        if (!errors.isEmpty()){
-            // There are errors. Render form again with sanitized values/errors messages.
-            res.render('signup', { title: 'Signup', user: req.body, errors: errors.array() });
-            return
-        }
-        else{
-            //Data from form is valid.
-            let memberstatus = "basic";
-            if(req.body.secretcode == "premium"){
-                memberstatus = "premium";
-                console.log("member is premium");
-            } else if (req.body.secretcode == "admin"){
-                memberstatus = "admin";
-                console.log("member is admin");
-            }
-            //Create a user object with escaped and trimmed data
-            var user = new User(
-                {
-                    username: req.body.username,
-                    password: req.body.password,
-                    first_name: req.body.first_name,
-                    last_name: req.body.last_name,
-                    permission: memberstatus,
-                });
-            user.save(function(err){
-                if(err){return next(err);}
-                //Successful - redirect to new person record.
-                res.redirect('/')
-            })
-        }
+  async (req, res, next) => {
+    const errors = validationResult(req);
+    // Render again if errors
+    if (!errors.isEmpty()) {
+      const user = new User({
+        username: req.body.username,
+        first_name: req.body.first_name,
+        last_name: req.body.last_name,
+      });
+      return res.render('sign-up', {
+        title: 'Sign-Up',
+        errors: errors.array(),
+        user,
+      });
     }
+    // Sign-Up the User
+    try {
+      const hashedPassword = await bcrypt.hash(req.body.password, 10);
+      const user = new User({
+        username: req.body.username,
+        first_name: req.body.first_name,
+        last_name: req.body.last_name,
+        password: hashedPassword,
+      });
+      await user.save();
+      res.redirect('/');
+    } catch (err) {
+      next(err);
+    }
+  },
 ];
 
-// GET request for login. 
-exports.user_login_get = function(req, res, next) {
-    res.render("login");
+// GET Log-In Form
+exports.userLogInGet = (req, res) => {
+  res.render('log-in');
 };
 
 // POST request for login. 
-exports.user_login_post = function(req, res, next) {
-    passport.authenticate("local", {
-        successRedirect: "/",
-        failureRedirect: "/"
-      })
-};
+exports.userLogInPost = (req, res) => {
+  passport.authenticate('local', (err, user, info) => {
+    if (err) {
+      res.render('log-in', {
+        errors: { login: { msg: 'Internal error.' } },
+        title: 'Members Only',
+      });
+    } else if (!user) {
+      res.render('log-in', {
+        errors: { login: { msg: 'Invalid username or password.' } },
+        title: 'Members Only',
+        username: req.body.username,
+      });
+    } else {
+      req.login(user, function(err, done) {
+        if (err) {
+          done(err);
+        }
+        res.redirect('/');
+      });
+    }
+  })(req, res);
+};         
 
 // Display user logout on GET.
-exports.user_logout_get = function(req, res, next) {
-    req.logout();
-    res.redirect("/");
+exports.userLogOut = function(req, res, next) {
+    req.session.destroy(function(err){
+        if (err) throw new Error(err);
+        res.redirect('/');
+    });
 };
+
+
+// GET Join Club Form
+exports.userJoinClubGet = (req, res) => {
+    if (req.user) {
+      res.render('join-club');
+    } else {
+      res.redirect('/');
+    }
+  };
+  
+  // POST Join Club Form
+  exports.userJoinClubPost = [
+    // Validate and sanitize
+    body('secretCode')
+      .custom(
+        (secretCode) =>
+          secretCode === 'member' || secretCode === 'admin'
+      )
+      .withMessage('Wrong password')
+      .trim()
+      .escape(),
+  
+    async (req, res, next) => {
+      const errors = validationResult(req);
+      // Check if user signed in
+      if (!req.user) res.redirect('/sign-up');
+      // Render again if errors
+      if (!errors.isEmpty()) {
+        res.render('join-club', { errors: errors.array() });
+      }
+      // Change user's status
+      try {
+        const user = await User.findOne({ username: req.user.username });
+        req.body.secretCode === 'member'
+          ? (user.permission = 'member')
+          : (user.permission = 'admin');
+        await user.save();
+        res.redirect('/');
+      } catch (err) {
+        next(err);
+      }
+    },
+  ];
+  

@@ -1,36 +1,85 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+const createError = require('http-errors');
+const express = require('express');
+const path = require('path');
+const cookieParser = require('cookie-parser');
+const logger = require('morgan');
+const bcrypt = require("bcryptjs");
 const session = require("express-session");
 const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
-const bcrypt = require("bcryptjs");
-const bodyParser = require('body-parser');
-const ejsLint = require('ejs-lint');
+const User = require('./models/user')
+
 require('dotenv').config()
 
 // set up routes
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const indexRouter = require('./routes/index');
 
 // init
-var app = express();
+const app = express();
 
 // set up db
-var mongoose = require('mongoose');
-var mongoDB = process.env.DB_HOST
+const mongoose = require('mongoose');
+const mongoDB = process.env.DB_HOST
 mongoose.connect(mongoDB, { useNewUrlParser: true, useUnifiedTopology: true});
-var db = mongoose.connection;
+const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'ejs');
+app.set('view engine', 'pug');
 
-// use middleware
+// PassportJS setup
+app.use(
+  session({
+    secret: process.env.sessionSecret,
+    resave: false,
+    saveUninitialized: true,
+  })
+);
+passport.use(
+  new LocalStrategy(async (username, password, done) => {
+    try {
+      const user = await User.findOne({ username });
+      //No user
+      if(!user){
+        app.locals.loginErrors = {
+          usernameError: `Username ${username} not found`,
+        };
+        return done(null, false);
+      }
+      //Check password match
+      bcrypt.compare(password, user.password, (err, res) => {
+        if(res){
+          return done(null, user);
+        } else {
+          // Password doesn't match
+          app.locals.loginErrors = { passwordError: 'Incorrect password'};
+          return done(null, false);
+        }
+      });
+    } catch (err) {
+      done(err);
+    }
+  })
+)
+passport.serializeUser(function(user, done){
+  done(null, user.id);
+})
+
+passport.deserializeUser(function(id, done){
+  User.findById(id, function(err, user){
+    done(err, user);
+  })
+})
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(express.urlencoded({extended: false}));
+app.use(function(req, res, next){
+  res.locals.currentUser = req.user;
+  next();
+})
+
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -39,7 +88,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // use routers
 app.use('/', indexRouter);
-app.use('/users', usersRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

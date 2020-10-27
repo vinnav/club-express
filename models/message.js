@@ -1,29 +1,17 @@
-var mongoose = require('mongoose');
-const { DateTime} = require("luxon");
+const mongoose = require('mongoose');
+const moment = require('moment');
 
-var Schema = mongoose.Schema;
+const Schema = mongoose.Schema;
 
-var MessageSchema = new Schema(
-    {
-        content: {type: String, required: true},
-        timestamp: {type: Date, default: Date.now},
-        owner: {type: Schema.Types.ObjectId, ref: 'User', required: true },
-    }
-);
-
-// Virtual for author's full name
-MessageSchema
-.virtual('due_formatted')
-.get(function(){
-  return DateTime.fromJSDate(this.timestamp).toLocaleString(DateTime.DATE_MED);
+const MessageSchema = new Schema({
+  content: { type: String, required: true, minlength: 2 },
+  timestamp: { type: Date, required: true },
+  owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 });
 
-
-// Virtual for author's URL
-MessageSchema
-.virtual('url')
-.get(function () {
-    return '/index/message/' + this.id;
+// Virtual for formatted timestamp
+MessageSchema.virtual('date').get(function() {
+  return moment(this.timestamp).format('Do MMM YYYY HH:mm');
 });
 
 // Export model
